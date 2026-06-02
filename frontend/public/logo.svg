@@ -1,0 +1,12 @@
+<svg viewBox="0 0 160 60" xmlns="http://www.w3.org/2000/svg">
+  <g transform="translate(8,4)">
+    <rect x="4" y="2" width="10" height="22" rx="2" fill="#FECC64"/>
+    <rect x="4" y="2" width="10" height="5" rx="2" fill="#E8453C"/>
+    <rect x="3" y="2" width="12" height="2" rx="1" fill="#FFC0C0"/>
+    <path d="M4 24 L9 30 L14 24 Z" fill="#FA9058"/>
+    <rect x="7" y="6" width="5" height="18" rx="1" fill="#FFD97A"/>
+  </g>
+  <text x="32" y="44" font-family="Baloo 2,cursive" font-size="38" font-weight="800">
+    <tspan fill="#E8453C">K</tspan><tspan fill="#FECC64">i</tspan><tspan fill="#34A853">d</tspan><tspan fill="#4285F4">d</tspan><tspan fill="#7B52AB">o</tspan>
+  </text>
+</svg>
