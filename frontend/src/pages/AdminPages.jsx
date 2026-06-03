@@ -1,328 +1,496 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 
-// Mock data
-const ADMIN_ANNOUNCEMENTS = [
-  { id: 1, title: 'Server Maintenance Scheduled', body: 'Database maintenance scheduled for Sunday 2-4 AM', type: 'maintenance', date: '16/05/2026', status: 'scheduled' },
-];
+const API = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
 
-const ADMIN_TEACHERS = [
-  { id: 1, name: 'Sara Ahmed', email: 'sara.ahmed@school.sa', status: 'online' },
-  { id: 2, name: 'Fahad Al-Dosari', email: 'fahad.dosari@school.sa', status: 'online' },
-  { id: 3, name: 'Noor Al-Shammari', email: 'noor.shammari@school.sa', status: 'away' },
-];
+function useAdminFetch(endpoint) {
+  const { token } = useAuth();
+  const [data, setData]       = useState(null);
+  const [loading, setLoading] = useState(true);
+  const load = () => {
+    fetch(`${API}${endpoint}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json()).then(d => { setData(d); setLoading(false); })
+      .catch(() => setLoading(false));
+  };
+  useEffect(() => { load(); }, [endpoint, token]);
+  return { data, loading, reload: load };
+}
 
-const ADMIN_CHAT_MESSAGES = {
-  1: [
-    { id: 1, sender: 'Admin', text: 'Hi Sara, server maintenance scheduled for Sunday.', time: '10:30', isAdmin: true },
-    { id: 2, sender: 'Sara Ahmed', text: 'Thank you for the notice! Any impact on data?', time: '10:35', isAdmin: false },
-    { id: 3, sender: 'Admin', text: 'No impact. Just infrastructure updates. 2-4 AM window.', time: '10:36', isAdmin: true },
-  ],
-};
+async function adminPost(endpoint, body, token, method='POST') {
+  const res = await fetch(`${API}${endpoint}`, {
+    method, headers: { 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+  return res.json();
+}
 
-// ─── ANNOUNCEMENTS ───
+// ─────────────────────────────────────────────
+// OVERVIEW PAGE
+// ─────────────────────────────────────────────
 export function AdminAnnouncementsPage() {
   const { token } = useAuth();
-
   const [anns, setAnns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ title: '', description: '', badge_type: 'Info', target_grade: '' });
-  const [posting, setPosting] = useState(false);
+  const [form, setForm] = useState({ title:'', description:'', badge_type:'Info', target_grade:'' });
   const [msg, setMsg] = useState('');
-
-  const BASE = 'http://localhost:5001/api';
+  const [posting, setPosting] = useState(false);
 
   const load = () => {
-    setLoading(true);
-    fetch(`${BASE}/announcements`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json())
-      .then(data => { setAnns(Array.isArray(data) ? data : []); setLoading(false); })
-      .catch(() => { setAnns([]); setLoading(false); });
+    fetch(`${API}/announcements`, { headers:{ Authorization:`Bearer ${token}` } })
+      .then(r=>r.json()).then(d=>{ setAnns(Array.isArray(d)?d:[]); setLoading(false); }).catch(()=>setLoading(false));
   };
-
-  useEffect(() => { if (token) load(); }, [token]);
+  useEffect(()=>{ load(); },[token]);
 
   const post = async () => {
-    if (!form.title.trim()) { setMsg('Please enter a title.'); return; }
+    if (!form.title.trim()) { setMsg('Title required.'); return; }
     setPosting(true); setMsg('');
-    try {
-      const res = await fetch(`${BASE}/announcements`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ title: form.title, description: form.description, badge_type: form.badge_type, target_grade: form.target_grade || null }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setMsg('✅ Announcement posted! Students and teachers will see it.');
-        setForm({ title: '', description: '', badge_type: 'Info', target_grade: '' });
-        setShowForm(false);
-        load();
-      } else { setMsg(data.error || 'Failed.'); }
-    } catch { setMsg('Cannot connect to server.'); }
+    const res = await adminPost('/announcements', { ...form, target_grade: form.target_grade||null }, token);
+    setMsg(res.success ? '✅ Posted!' : res.error||'Failed.');
+    if (res.success) { setForm({ title:'',description:'',badge_type:'Info',target_grade:'' }); setShowForm(false); load(); }
     setPosting(false);
   };
 
   const del = async (id) => {
-    if (!confirm('Delete this announcement?')) return;
-    await fetch(`${BASE}/announcements/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+    if (!confirm('Delete?')) return;
+    await adminPost(`/announcements/${id}`, {}, token, 'DELETE');
     load();
   };
 
+  const BADGE = { Info:{bg:'#E8F4FF',c:'#4285F4'}, Urgent:{bg:'#FFF0E8',c:'#FA9058'}, New:{bg:'#E8FBF0',c:'#5BCC8A'}, Event:{bg:'#F0ECFF',c:'#7B52AB'}, Academic:{bg:'#FFF0E8',c:'#FA9058'}, Homework:{bg:'#FFFBE8',c:'#C9960A'} };
+
   return (
-    <div className="page-enter" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div>
-          <h2 style={{ fontFamily: "'Baloo 2', cursive", fontSize: 24, fontWeight: 800 }}>📢 Announcements</h2>
-          <p style={{ fontSize: 13, color: 'var(--text-mid)', marginTop: 2 }}>Post announcements to all or specific grades</p>
-        </div>
-        <button className="btn-primary" onClick={() => setShowForm(p => !p)}>＋ New Announcement</button>
+    <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+        <div><h2 style={{ fontFamily:"'Baloo 2',cursive", fontSize:24, fontWeight:800 }}>📢 Announcements</h2><p style={{ fontSize:13, color:'var(--text-mid)' }}>Post to students and teachers</p></div>
+        <button onClick={()=>setShowForm(p=>!p)} style={{ padding:'10px 20px', borderRadius:20, border:'none', background:'var(--orange)', color:'white', fontFamily:"'Nunito',sans-serif", fontWeight:700, cursor:'pointer' }}>＋ New</button>
       </div>
-
-      {msg && <div style={{ padding: '10px 14px', borderRadius: 10, background: msg.startsWith('✅') ? '#E8FBF0' : '#FFF0E8', color: msg.startsWith('✅') ? '#34A853' : '#FA9058', fontSize: 13, fontWeight: 600 }}>{msg}</div>}
-
+      {msg && <div style={{ padding:'10px 14px', borderRadius:10, background:msg.startsWith('✅')?'#E8FBF0':'#FFF0E8', color:msg.startsWith('✅')?'#34A853':'#FA9058', fontSize:13 }}>{msg}</div>}
       {showForm && (
-        <div style={{ background: 'white', borderRadius: 'var(--radius)', padding: 20, border: '2px solid var(--orange)', boxShadow: '0 4px 16px rgba(250,144,88,0.2)' }}>
-          <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 16, fontWeight: 700, marginBottom: 14 }}>✍️ New Announcement</div>
-          <input className="form-input" value={form.title} onChange={e => setForm(f=>({...f,title:e.target.value}))} placeholder="Title…" />
-          <textarea className="form-input" value={form.description} onChange={e => setForm(f=>({...f,description:e.target.value}))} placeholder="Description (optional)…" style={{ minHeight: 100, fontFamily: 'Nunito, sans-serif', resize: 'vertical' }} />
-          <div style={{ display: 'flex', gap: 10 }}>
-            <select className="form-select" value={form.badge_type} onChange={e => setForm(f=>({...f,badge_type:e.target.value}))}>
-              {['Info','Urgent','Event','New','Academic','Homework'].map(t => <option key={t}>{t}</option>)}
+        <div style={{ background:'white', borderRadius:16, padding:20, border:'2px solid var(--yellow)' }}>
+          <input value={form.title} onChange={e=>setForm(f=>({...f,title:e.target.value}))} placeholder="Title…" style={{ width:'100%', padding:'10px 14px', borderRadius:10, border:'2px solid #eee', fontFamily:"'Nunito',sans-serif", fontSize:14, outline:'none', marginBottom:10, boxSizing:'border-box' }} />
+          <textarea value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} placeholder="Description…" style={{ width:'100%', padding:'10px 14px', borderRadius:10, border:'2px solid #eee', fontFamily:"'Nunito',sans-serif", fontSize:14, outline:'none', minHeight:80, marginBottom:10, boxSizing:'border-box', resize:'vertical' }} />
+          <div style={{ display:'flex', gap:10 }}>
+            <select value={form.badge_type} onChange={e=>setForm(f=>({...f,badge_type:e.target.value}))} style={{ padding:'8px 12px', borderRadius:10, border:'2px solid #eee', fontFamily:"'Nunito',sans-serif", fontSize:13 }}>
+              {['Info','Urgent','New','Event','Academic','Homework'].map(t=><option key={t}>{t}</option>)}
             </select>
-            <select className="form-select" value={form.target_grade} onChange={e => setForm(f=>({...f,target_grade:e.target.value}))}>
-              <option value="">📢 All Grades</option>
-              <option value="1">Grade 1 only</option>
-              <option value="2">Grade 2 only</option>
-              <option value="3">Grade 3 only</option>
+            <select value={form.target_grade} onChange={e=>setForm(f=>({...f,target_grade:e.target.value}))} style={{ padding:'8px 12px', borderRadius:10, border:'2px solid #eee', fontFamily:"'Nunito',sans-serif", fontSize:13 }}>
+              <option value="">All Grades</option>
+              <option value="1">Grade 1</option><option value="2">Grade 2</option><option value="3">Grade 3</option>
             </select>
-            <button className="btn-primary" onClick={post} disabled={posting}>{posting ? 'Posting...' : 'Post ✅'}</button>
-            <button className="btn-cancel" onClick={() => setShowForm(false)}>Cancel</button>
+            <button onClick={post} disabled={posting} style={{ padding:'8px 18px', borderRadius:10, border:'none', background:'var(--orange)', color:'white', fontFamily:"'Nunito',sans-serif", fontWeight:700, cursor:'pointer' }}>{posting?'Posting…':'Post ✅'}</button>
+            <button onClick={()=>setShowForm(false)} style={{ padding:'8px 18px', borderRadius:10, border:'none', background:'#F5EDE6', color:'var(--text-mid)', fontFamily:"'Nunito',sans-serif", fontWeight:700, cursor:'pointer' }}>Cancel</button>
           </div>
         </div>
       )}
-
-      {loading ? <p style={{ color: 'var(--text-light)', fontSize: 13 }}>Loading...</p> :
-       anns.length === 0 ? <p style={{ color: 'var(--text-light)', textAlign: 'center', padding: 40 }}>No announcements yet.</p> :
-       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {anns.map(a => (
-          <div key={a.announcement_id} className="card" style={{ borderLeft: `4px solid #FA9058` }}>
-            <div style={{ display: 'flex', alignItems: 'start', justifyContent: 'space-between', gap: 12 }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 16, fontWeight: 700, color: 'var(--text-dark)' }}>{a.title}</div>
-                {a.description && <div style={{ fontSize: 13, color: 'var(--text-mid)', marginTop: 6, lineHeight: 1.5 }}>{a.description}</div>}
-                <div style={{ display: 'flex', gap: 10, marginTop: 10, fontSize: 11, color: 'var(--text-light)' }}>
-                  <span>📅 {new Date(a.date_posted).toLocaleDateString()}</span>
-                  <span>👤 {a.author}</span>
-                  <span>🎯 {a.target_grade ? `Grade ${a.target_grade}` : 'All Grades'}</span>
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
-                <span style={{ fontSize: 10, fontWeight: 800, padding: '4px 10px', borderRadius: 20, background: '#FFF0E8', color: '#FA9058' }}>{a.badge_type}</span>
-                <button onClick={() => del(a.announcement_id)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: '#ccc' }}>🗑</button>
-              </div>
-            </div>
-          </div>
-        ))}
-       </div>}
+      {loading ? <p style={{ color:'var(--text-light)', fontSize:13 }}>Loading…</p> :
+       anns.length===0 ? <p style={{ textAlign:'center', color:'var(--text-light)', padding:40 }}>No announcements yet.</p> :
+       anns.map(a => {
+         const b = BADGE[a.badge_type]||BADGE.Info;
+         return (
+           <div key={a.announcement_id} style={{ background:'white', borderRadius:14, padding:'16px 20px', borderLeft:`4px solid ${b.c}`, display:'flex', gap:12, alignItems:'start' }}>
+             <div style={{ flex:1 }}>
+               <div style={{ fontWeight:700, fontSize:14 }}>{a.title}</div>
+               {a.description && <div style={{ fontSize:13, color:'var(--text-mid)', marginTop:4, lineHeight:1.5 }}>{a.description}</div>}
+               <div style={{ fontSize:11, color:'var(--text-light)', marginTop:8 }}>📅 {new Date(a.date_posted).toLocaleDateString()} · 👤 {a.author} · 🎯 {a.target_grade?`Grade ${a.target_grade}`:'All'}</div>
+             </div>
+             <div style={{ display:'flex', gap:8, alignItems:'center', flexShrink:0 }}>
+               <span style={{ fontSize:10, fontWeight:800, padding:'3px 9px', borderRadius:20, background:b.bg, color:b.c }}>{a.badge_type}</span>
+               <button onClick={()=>del(a.announcement_id)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:16, color:'#ccc' }}>🗑</button>
+             </div>
+           </div>
+         );
+       })}
     </div>
   );
 }
 
+// ─────────────────────────────────────────────
+// TEACHER CHAT PAGE
+// ─────────────────────────────────────────────
 export function AdminChatPage() {
-  const [selectedTeacher, setSelectedTeacher] = useState(1);
-  const [messages, setMessages] = useState(ADMIN_CHAT_MESSAGES);
-  const [input, setInput] = useState('');
+  const { token } = useAuth();
+  const [teachers, setTeachers] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [input, setInput]       = useState('');
+  const [sending, setSending]   = useState(false);
   const bottomRef = useRef(null);
 
-  useEffect(() => { if (bottomRef.current) bottomRef.current.scrollIntoView({ behavior: 'smooth' }); }, [selectedTeacher, messages]);
+  useEffect(() => {
+    fetch(`${API}/admin/teachers`, { headers:{ Authorization:`Bearer ${token}` } })
+      .then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setTeachers(d); }).catch(()=>{});
+  }, [token]);
 
-  const send = () => {
-    if (!input.trim() || !selectedTeacher) return;
-    const now = new Date();
-    const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
-    setMessages(prev => ({
-      ...prev,
-      [selectedTeacher]: [...(prev[selectedTeacher] || []), { id: Date.now(), sender: 'Admin', text: input, time, isAdmin: true }]
-    }));
-    setInput('');
+  const loadMsgs = (tid) => {
+    fetch(`${API}/admin/chat/${tid}`, { headers:{ Authorization:`Bearer ${token}` } })
+      .then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setMessages(d); }).catch(()=>{});
   };
 
-  const teacher = ADMIN_TEACHERS.find(t => t.id === selectedTeacher);
-  const currentMessages = messages[selectedTeacher] || [];
+  useEffect(() => {
+    if (!selected) return;
+    loadMsgs(selected.teacher_id);
+    const iv = setInterval(()=>loadMsgs(selected.teacher_id), 5000);
+    return ()=>clearInterval(iv);
+  }, [selected, token]);
 
-  return (
-    <div className="page-enter" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <h2 style={{ fontFamily: "'Baloo 2', cursive", fontSize: 24, fontWeight: 800 }}>💬 Teacher Communication</h2>
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior:'smooth' }); }, [messages]);
 
-      <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 20, height: 'calc(100vh - 250px)' }}>
-        {/* Teachers list */}
-        <div className="card" style={{ overflowY: 'auto', padding: 0 }}>
-          {ADMIN_TEACHERS.map(t => (
-            <button
-              key={t.id}
-              onClick={() => setSelectedTeacher(t.id)}
-              style={{
-                width: '100%', padding: 14, borderBottom: '1px solid #F5EDE6', background: selectedTeacher === t.id ? '#FFF0E8' : 'white',
-                border: 'none', cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s'
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ width: 10, height: 10, borderRadius: '50%', background: t.status === 'online' ? '#5BCC8A' : '#FECC64' }} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-dark)' }}>{t.name}</div>
-                  <div style={{ fontSize: 10, color: 'var(--text-light)' }}>{t.status}</div>
-                </div>
-              </div>
-            </button>
-          ))}
-        </div>
-
-        {/* Chat */}
-        <div className="card" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-dark)', paddingBottom: 12, borderBottom: '1px solid #F5EDE6' }}>👩‍🏫 {teacher?.name}</div>
-          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8, paddingBottom: 8 }}>
-            {currentMessages.map(m => (
-              <div key={m.id} style={{ display: 'flex', flexDirection: 'column', alignItems: m.isAdmin ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
-                <div style={{ fontSize: 10, color: 'var(--text-light)', marginBottom: 2 }}>{m.sender}</div>
-                <div className={m.isAdmin ? 'bubble-text-out' : 'bubble-text-in'}>{m.text}</div>
-                <div style={{ fontSize: 9, color: 'var(--text-light)', marginTop: 2 }}>{m.time}</div>
-              </div>
-            ))}
-            <div ref={bottomRef} />
-          </div>
-          <div style={{ display: 'flex', gap: 10, paddingTop: 12, borderTop: '1px solid #F5EDE6' }}>
-            <input className="form-input" style={{ flex: 1, margin: 0, borderRadius: 30 }} value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()} placeholder="Type message…" />
-            <button onClick={send} style={{ width: 42, height: 42, borderRadius: '50%', background: 'linear-gradient(135deg, var(--orange), #f97040)', border: 'none', color: 'white', fontSize: 17, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>➤</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── ATTENDANCE ───
-export function AdminAttendancePage() {
-  const [selectedTeacher, setSelectedTeacher] = useState('Sara Ahmed');
-  const [month, setMonth] = useState('May');
-
-  const attendanceData = {
-    'Sara Ahmed': { present: 18, absent: 1, late: 1, total: 20 },
-    'Fahad Al-Dosari': { present: 19, absent: 0, late: 1, total: 20 },
-    'Noor Al-Shammari': { present: 20, absent: 0, late: 0, total: 20 },
-    'Mohammed Al-Ghamdi': { present: 17, absent: 2, late: 1, total: 20 },
+  const send = async () => {
+    if (!input.trim()||!selected) return;
+    setSending(true);
+    const res = await adminPost('/admin/chat', { teacher_id:selected.teacher_id, content:input.trim() }, token);
+    if (res.success) { setInput(''); loadMsgs(selected.teacher_id); }
+    setSending(false);
   };
 
-  const data = attendanceData[selectedTeacher];
-
   return (
-    <div className="page-enter" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <div><h2 style={{ fontFamily: "'Baloo 2', cursive", fontSize: 24, fontWeight: 800 }}>📋 Teacher Attendance</h2><p style={{ fontSize: 13, color: 'var(--text-mid)', marginTop: 2 }}>Track teacher attendance records</p></div>
-
-      <div className="card">
-        <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
-          <select className="form-select" value={selectedTeacher} onChange={e => setSelectedTeacher(e.target.value)}>
-            {Object.keys(attendanceData).map(t => <option key={t}>{t}</option>)}
-          </select>
-          <select className="form-select" value={month} onChange={e => setMonth(e.target.value)}>
-            {['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].map(m => <option key={m}>{m}</option>)}
-          </select>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
-          {[
-            { label: 'Present', value: data.present, color: '#5BCC8A', bg: '#E8FBF0' },
-            { label: 'Absent', value: data.absent, color: '#E24B4A', bg: '#FFF0E8' },
-            { label: 'Late', value: data.late, color: '#FA9058', bg: '#FFF0E8' },
-            { label: 'Total', value: data.total, color: '#4285F4', bg: '#E8F4FF' },
-          ].map(s => (
-            <div key={s.label} style={{ background: s.bg, borderRadius: 'var(--radius-sm)', padding: 16, textAlign: 'center' }}>
-              <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 24, fontWeight: 800, color: s.color }}>{s.value}</div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-mid)', marginTop: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{s.label}</div>
+    <div style={{ display:'flex', gap:20, height:'calc(100vh - 160px)', minHeight:500 }}>
+      {/* Teacher list */}
+      <div style={{ width:260, background:'white', borderRadius:16, padding:16, display:'flex', flexDirection:'column', gap:4, overflow:'auto', flexShrink:0 }}>
+        <div style={{ fontFamily:"'Baloo 2',cursive", fontSize:16, fontWeight:700, marginBottom:10 }}>Teachers</div>
+        {teachers.map(t => (
+          <div key={t.teacher_id} onClick={()=>{ setSelected(t); setMessages([]); }}
+            style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', borderRadius:12, cursor:'pointer',
+              background: selected?.teacher_id===t.teacher_id ? 'var(--apricot)' : 'transparent' }}>
+            <div style={{ width:36, height:36, borderRadius:'50%', background:'linear-gradient(135deg,var(--azure),var(--apogyan))', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:800, fontSize:12, flexShrink:0 }}>
+              {t.teacher_name.replace(/Ms\.?\s|Mr\.?\s/,'').split(' ').map(n=>n[0]).join('').slice(0,2)}
             </div>
-          ))}
-        </div>
-
-        <div style={{ borderTop: '1px solid #F5EDE6', paddingTop: 16 }}>
-          <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Attendance Rate: <span style={{ color: '#5BCC8A' }}>{Math.round((data.present / data.total) * 100)}%</span></div>
-          <div style={{ width: '100%', height: 20, borderRadius: 10, background: '#F5EDE6', overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${(data.present / data.total) * 100}%`, background: 'linear-gradient(90deg, #5BCC8A, #34A853)', borderRadius: 10 }} />
+            <div><div style={{ fontSize:13, fontWeight:700 }}>{t.teacher_name}</div><div style={{ fontSize:11, color:'var(--text-light)' }}>{t.class}</div></div>
           </div>
-        </div>
+        ))}
+      </div>
+
+      {/* Chat window */}
+      <div style={{ flex:1, background:'white', borderRadius:16, padding:20, display:'flex', flexDirection:'column' }}>
+        {!selected ? (
+          <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:12, color:'var(--text-light)' }}>
+            <div style={{ fontSize:48, opacity:0.3 }}>💬</div>
+            <div style={{ fontFamily:"'Baloo 2',cursive", fontSize:18, fontWeight:700, color:'var(--text-mid)' }}>Select a teacher</div>
+          </div>
+        ) : (
+          <>
+            <div style={{ display:'flex', alignItems:'center', gap:12, paddingBottom:14, borderBottom:'1px solid #F5EDE6', marginBottom:14 }}>
+              <div style={{ width:40, height:40, borderRadius:12, background:'linear-gradient(135deg,var(--azure),var(--apogyan))', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:800, fontSize:13 }}>
+                {selected.teacher_name.replace(/Ms\.?\s|Mr\.?\s/,'').split(' ').map(n=>n[0]).join('').slice(0,2)}
+              </div>
+              <div><div style={{ fontFamily:"'Baloo 2',cursive", fontSize:16, fontWeight:700 }}>{selected.teacher_name}</div><div style={{ fontSize:12, color:'var(--text-light)' }}>{selected.class}</div></div>
+            </div>
+            <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column', gap:10, paddingBottom:8 }}>
+              {messages.length===0 ? <p style={{ color:'var(--text-light)', fontSize:13, textAlign:'center', padding:40 }}>No messages yet. Start the conversation!</p> :
+               messages.map(m => (
+                <div key={m.chat_id} style={{ display:'flex', flexDirection:'column', alignItems:m.sender_type==='admin'?'flex-end':'flex-start', marginBottom:6 }}>
+                  <div style={{ fontSize:11, color:'var(--text-light)', marginBottom:3, padding:'0 4px' }}>{m.sender_name}</div>
+                  <div style={{ background:m.sender_type==='admin'?'linear-gradient(135deg,var(--orange),#f97040)':'var(--apricot)', color:m.sender_type==='admin'?'white':'var(--text-dark)', padding:'10px 14px', borderRadius:m.sender_type==='admin'?'18px 18px 4px 18px':'18px 18px 18px 4px', fontSize:13, maxWidth:'75%' }}>{m.content}</div>
+                  <div style={{ fontSize:10, color:'var(--text-light)', marginTop:3, padding:'0 4px' }}>{new Date(m.sent_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>
+                </div>
+               ))}
+              <div ref={bottomRef}/>
+            </div>
+            <div style={{ display:'flex', gap:10, paddingTop:12, borderTop:'1px solid #F5EDE6' }}>
+              <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&send()}
+                placeholder={`Message ${selected.teacher_name}…`}
+                style={{ flex:1, padding:'10px 16px', borderRadius:30, border:'2px solid #F5EDE6', fontFamily:"'Nunito',sans-serif", fontSize:13, outline:'none' }}/>
+              <button onClick={send} disabled={sending} style={{ width:42, height:42, borderRadius:'50%', background:sending?'#ccc':'linear-gradient(135deg,var(--orange),#f97040)', border:'none', color:'white', fontSize:18, cursor:sending?'not-allowed':'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>➤</button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
 }
 
-// ─── KPI ───
-export function AdminKPIPage() {
-  const kpiData = [
-    { name: 'Sara Ahmed', lessons: 88, rating: 4.8, students: 90, satisfaction: 95, trend: '⬆️' },
-    { name: 'Fahad Al-Dosari', lessons: 92, rating: 4.6, students: 85, satisfaction: 92, trend: '→' },
-    { name: 'Noor Al-Shammari', lessons: 95, rating: 4.9, students: 95, satisfaction: 98, trend: '⬆️' },
-    { name: 'Mohammed Al-Ghamdi', lessons: 82, rating: 4.4, students: 80, satisfaction: 88, trend: '⬇️' },
-  ];
+// ─────────────────────────────────────────────
+// ATTENDANCE PAGE
+// ─────────────────────────────────────────────
+export function AdminAttendancePage() {
+  const { token } = useAuth();
+  const [date, setDate]         = useState(new Date().toISOString().split('T')[0]);
+  const [teachers, setTeachers] = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [saving, setSaving]     = useState({});
+  const [msg, setMsg]           = useState('');
+
+  const load = (d) => {
+    setLoading(true);
+    fetch(`${API}/admin/attendance?date=${d}`, { headers:{ Authorization:`Bearer ${token}` } })
+      .then(r=>r.json()).then(data=>{ if(Array.isArray(data)) setTeachers(data); setLoading(false); }).catch(()=>setLoading(false));
+  };
+
+  useEffect(()=>{ load(date); },[token, date]);
+
+  const mark = async (teacher_id, status) => {
+    setSaving(p=>({...p,[teacher_id]:true}));
+    const res = await adminPost('/admin/attendance', { teacher_id, status, date }, token);
+    if (res.success) { setMsg('✅ Saved!'); load(date); setTimeout(()=>setMsg(''),2000); }
+    setSaving(p=>({...p,[teacher_id]:false}));
+  };
+
+  const STATUS = { present:{ bg:'#5BCC8A', label:'Present' }, absent:{ bg:'#FA9058', label:'Absent' }, late:{ bg:'#FECC64', label:'Late' } };
 
   return (
-    <div className="page-enter" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <div><h2 style={{ fontFamily: "'Baloo 2', cursive", fontSize: 24, fontWeight: 800 }}>📊 Teacher KPI</h2><p style={{ fontSize: 13, color: 'var(--text-mid)', marginTop: 2 }}>Performance metrics and ratings</p></div>
-
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <table className="kiddo-table">
+    <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+        <div><h2 style={{ fontFamily:"'Baloo 2',cursive", fontSize:24, fontWeight:800 }}>✅ Teacher Attendance</h2><p style={{ fontSize:13, color:'var(--text-mid)' }}>Track daily teacher attendance</p></div>
+        <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{ padding:'8px 14px', borderRadius:10, border:'2px solid #eee', fontFamily:"'Nunito',sans-serif", fontSize:13, outline:'none' }} />
+      </div>
+      {msg && <div style={{ padding:'10px 14px', borderRadius:10, background:'#E8FBF0', color:'#34A853', fontSize:13 }}>{msg}</div>}
+      <div style={{ background:'white', borderRadius:16, overflow:'hidden' }}>
+        <table style={{ width:'100%', borderCollapse:'collapse', fontFamily:"'Nunito',sans-serif" }}>
           <thead>
-            <tr>
-              <th>Teacher</th>
-              <th>Lessons</th>
-              <th>Rating</th>
-              <th>Students</th>
-              <th>Satisfaction</th>
-              <th>Trend</th>
+            <tr style={{ background:'var(--apricot)' }}>
+              <th style={{ padding:'12px 16px', textAlign:'left', fontSize:11, fontWeight:800, textTransform:'uppercase', letterSpacing:'0.8px', color:'var(--text-light)' }}>#</th>
+              <th style={{ padding:'12px 16px', textAlign:'left', fontSize:11, fontWeight:800, textTransform:'uppercase', letterSpacing:'0.8px', color:'var(--text-light)' }}>Teacher</th>
+              <th style={{ padding:'12px 16px', textAlign:'left', fontSize:11, fontWeight:800, textTransform:'uppercase', letterSpacing:'0.8px', color:'var(--text-light)' }}>Class</th>
+              <th style={{ padding:'12px 16px', textAlign:'left', fontSize:11, fontWeight:800, textTransform:'uppercase', letterSpacing:'0.8px', color:'var(--text-light)' }}>Status</th>
+              <th style={{ padding:'12px 16px', textAlign:'left', fontSize:11, fontWeight:800, textTransform:'uppercase', letterSpacing:'0.8px', color:'var(--text-light)' }}>Mark As</th>
             </tr>
           </thead>
           <tbody>
-            {kpiData.map((t, i) => (
-              <tr key={i}>
-                <td style={{ fontWeight: 700 }}>{t.name}</td>
-                <td>{t.lessons}%</td>
-                <td><span style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, color: '#FA9058' }}>{t.rating}</span>/5</td>
-                <td>{t.students}</td>
-                <td><span style={{ fontWeight: 800, color: t.satisfaction >= 95 ? '#5BCC8A' : '#FA9058' }}>{t.satisfaction}%</span></td>
-                <td style={{ fontSize: 16 }}>{t.trend}</td>
+            {loading ? <tr><td colSpan={5} style={{ textAlign:'center', padding:24, color:'var(--text-light)' }}>Loading…</td></tr> :
+             teachers.map((t,i) => (
+              <tr key={t.teacher_id} style={{ borderBottom:'1px solid #F5EDE6' }}>
+                <td style={{ padding:'12px 16px', color:'var(--text-light)', fontWeight:700 }}>{i+1}</td>
+                <td style={{ padding:'12px 16px', fontWeight:700 }}>{t.teacher_name}</td>
+                <td style={{ padding:'12px 16px', color:'var(--text-mid)', fontSize:13 }}>{t.class}</td>
+                <td style={{ padding:'12px 16px' }}>
+                  {t.status ? (
+                    <span style={{ fontSize:11, fontWeight:800, padding:'4px 12px', borderRadius:20, background:STATUS[t.status]?.bg+'22', color:STATUS[t.status]?.bg, textTransform:'capitalize' }}>{t.status}</span>
+                  ) : <span style={{ fontSize:11, color:'var(--text-light)' }}>Not marked</span>}
+                </td>
+                <td style={{ padding:'12px 16px' }}>
+                  <div style={{ display:'flex', gap:6 }}>
+                    {['present','absent','late'].map(s => (
+                      <button key={s} onClick={()=>mark(t.teacher_id, s)} disabled={saving[t.teacher_id]}
+                        style={{ padding:'4px 12px', borderRadius:20, border:'none', cursor:'pointer', fontSize:11, fontWeight:700, fontFamily:"'Nunito',sans-serif",
+                          background: t.status===s ? STATUS[s].bg : '#F5EDE6',
+                          color: t.status===s ? 'white' : 'var(--text-mid)',
+                          opacity: saving[t.teacher_id] ? 0.6 : 1 }}>
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 20 }}>
-        <div className="card">
-          <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 16, fontWeight: 700, marginBottom: 16 }}>🏆 Top Performers</div>
-          {kpiData.sort((a, b) => b.rating - a.rating).slice(0, 3).map((t, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: i < 2 ? '1px solid #F5EDE6' : 'none' }}>
-              <div style={{ fontSize: 18, fontWeight: 800, color: '#FA9058', width: 24 }}>#{i + 1}</div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-dark)' }}>{t.name}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-light)' }}>{t.satisfaction}% student satisfaction</div>
+// ─────────────────────────────────────────────
+// KPI PAGE
+// ─────────────────────────────────────────────
+export function AdminKPIPage() {
+  const { token } = useAuth();
+  const [teachers, setTeachers] = useState([]);
+  const [kpis, setKpis]         = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm]         = useState({ teacher_id:'', title:'', description:'', status:'pending', is_top_performer:false });
+  const [msg, setMsg]           = useState('');
+
+  const loadAll = () => {
+    setLoading(true);
+    Promise.all([
+      fetch(`${API}/admin/teachers`, { headers:{ Authorization:`Bearer ${token}` } }).then(r=>r.json()),
+      fetch(`${API}/admin/kpi`,      { headers:{ Authorization:`Bearer ${token}` } }).then(r=>r.json()),
+    ]).then(([t,k]) => {
+      if (Array.isArray(t)) setTeachers(t);
+      if (Array.isArray(k)) setKpis(k);
+      setLoading(false);
+    }).catch(()=>setLoading(false));
+  };
+
+  useEffect(()=>{ loadAll(); },[token]);
+
+  const add = async () => {
+    if (!form.teacher_id||!form.title) { setMsg('Teacher and title required.'); return; }
+    setMsg('');
+    const res = await adminPost('/admin/kpi', form, token);
+    if (res.success) { setMsg('✅ Added!'); setShowForm(false); setForm({ teacher_id:'', title:'', description:'', status:'pending', is_top_performer:false }); loadAll(); }
+    else setMsg(res.error||'Failed.');
+  };
+
+  const update = async (id, status, is_top_performer) => {
+    await adminPost(`/admin/kpi/${id}`, { status, is_top_performer }, token, 'PUT');
+    loadAll();
+  };
+
+  const del = async (id) => {
+    if (!confirm('Delete this action item?')) return;
+    await adminPost(`/admin/kpi/${id}`, {}, token, 'DELETE');
+    loadAll();
+  };
+
+  const topPerformers = kpis.filter(k=>k.is_top_performer);
+  const STATUS_STYLE = { pending:{bg:'#FFF0E8',c:'#FA9058'}, inprogress:{bg:'#E8F4FF',c:'#4285F4'}, completed:{bg:'#E8FBF0',c:'#5BCC8A'} };
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+        <div><h2 style={{ fontFamily:"'Baloo 2',cursive", fontSize:24, fontWeight:800 }}>🏆 Teacher KPI</h2><p style={{ fontSize:13, color:'var(--text-mid)' }}>Track performance and assign action items</p></div>
+        <button onClick={()=>setShowForm(p=>!p)} style={{ padding:'10px 20px', borderRadius:20, border:'none', background:'var(--orange)', color:'white', fontFamily:"'Nunito',sans-serif", fontWeight:700, cursor:'pointer' }}>＋ Add Action Item</button>
+      </div>
+
+      {msg && <div style={{ padding:'10px 14px', borderRadius:10, background:msg.startsWith('✅')?'#E8FBF0':'#FFF0E8', color:msg.startsWith('✅')?'#34A853':'#FA9058', fontSize:13 }}>{msg}</div>}
+
+      {/* Top performers */}
+      {topPerformers.length > 0 && (
+        <div style={{ background:'linear-gradient(135deg,#FECC64,#FA9058)', borderRadius:16, padding:20 }}>
+          <div style={{ fontFamily:"'Baloo 2',cursive", fontSize:18, fontWeight:800, color:'white', marginBottom:12 }}>⭐ Top Performers</div>
+          <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+            {[...new Set(topPerformers.map(k=>k.teacher_name))].map(name => (
+              <span key={name} style={{ background:'rgba(255,255,255,0.3)', color:'white', padding:'6px 16px', borderRadius:20, fontSize:13, fontWeight:700 }}>{name}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Add form */}
+      {showForm && (
+        <div style={{ background:'white', borderRadius:16, padding:20, border:'2px solid var(--yellow)' }}>
+          <div style={{ fontFamily:"'Baloo 2',cursive", fontSize:16, fontWeight:700, marginBottom:14 }}>➕ New Action Item</div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
+            <select value={form.teacher_id} onChange={e=>setForm(f=>({...f,teacher_id:e.target.value}))} style={{ padding:'10px 14px', borderRadius:10, border:'2px solid #eee', fontFamily:"'Nunito',sans-serif", fontSize:13, outline:'none' }}>
+              <option value="">Select teacher…</option>
+              {teachers.map(t=><option key={t.teacher_id} value={t.teacher_id}>{t.teacher_name}</option>)}
+            </select>
+            <select value={form.status} onChange={e=>setForm(f=>({...f,status:e.target.value}))} style={{ padding:'10px 14px', borderRadius:10, border:'2px solid #eee', fontFamily:"'Nunito',sans-serif", fontSize:13, outline:'none' }}>
+              <option value="pending">Pending</option>
+              <option value="inprogress">In Progress</option>
+              <option value="completed">Completed</option>
+            </select>
+          </div>
+          <input value={form.title} onChange={e=>setForm(f=>({...f,title:e.target.value}))} placeholder="Action item title…" style={{ width:'100%', padding:'10px 14px', borderRadius:10, border:'2px solid #eee', fontFamily:"'Nunito',sans-serif", fontSize:14, outline:'none', marginBottom:10, boxSizing:'border-box' }} />
+          <textarea value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} placeholder="Description (optional)…" style={{ width:'100%', padding:'10px 14px', borderRadius:10, border:'2px solid #eee', fontFamily:"'Nunito',sans-serif", fontSize:13, outline:'none', minHeight:70, marginBottom:10, boxSizing:'border-box', resize:'vertical' }} />
+          <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:12 }}>
+            <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:13, fontWeight:600, cursor:'pointer' }}>
+              <input type="checkbox" checked={form.is_top_performer} onChange={e=>setForm(f=>({...f,is_top_performer:e.target.checked}))} />
+              ⭐ Mark as Top Performer
+            </label>
+          </div>
+          <div style={{ display:'flex', gap:10 }}>
+            <button onClick={add} style={{ padding:'8px 20px', borderRadius:10, border:'none', background:'var(--orange)', color:'white', fontFamily:"'Nunito',sans-serif", fontWeight:700, cursor:'pointer' }}>Add ✅</button>
+            <button onClick={()=>setShowForm(false)} style={{ padding:'8px 20px', borderRadius:10, border:'none', background:'#F5EDE6', color:'var(--text-mid)', fontFamily:"'Nunito',sans-serif", fontWeight:700, cursor:'pointer' }}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* KPI list */}
+      {loading ? <p style={{ color:'var(--text-light)', fontSize:13 }}>Loading…</p> :
+       kpis.length===0 ? <p style={{ textAlign:'center', color:'var(--text-light)', padding:40 }}>No action items yet.</p> :
+       <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+        {kpis.map(k => {
+          const ss = STATUS_STYLE[k.status]||STATUS_STYLE.pending;
+          return (
+            <div key={k.kpi_id} style={{ background:'white', borderRadius:14, padding:'16px 20px', display:'flex', alignItems:'start', gap:14, borderLeft:`4px solid ${ss.c}` }}>
+              {k.is_top_performer && <span style={{ fontSize:18 }}>⭐</span>}
+              <div style={{ flex:1 }}>
+                <div style={{ fontWeight:700, fontSize:14 }}>{k.title}</div>
+                <div style={{ fontSize:12, color:'var(--text-mid)', marginTop:2 }}>{k.teacher_name}</div>
+                {k.description && <div style={{ fontSize:13, color:'var(--text-mid)', marginTop:6, lineHeight:1.5 }}>{k.description}</div>}
+                <div style={{ display:'flex', gap:8, marginTop:10 }}>
+                  {['pending','inprogress','completed'].map(s => (
+                    <button key={s} onClick={()=>update(k.kpi_id, s, k.is_top_performer)}
+                      style={{ padding:'3px 12px', borderRadius:20, border:'none', cursor:'pointer', fontSize:11, fontWeight:700, fontFamily:"'Nunito',sans-serif", background:k.status===s?STATUS_STYLE[s].c:'#F5EDE6', color:k.status===s?'white':'var(--text-mid)' }}>
+                      {s}
+                    </button>
+                  ))}
+                  <button onClick={()=>update(k.kpi_id, k.status, !k.is_top_performer)} style={{ padding:'3px 12px', borderRadius:20, border:'none', cursor:'pointer', fontSize:11, fontWeight:700, fontFamily:"'Nunito',sans-serif", background:k.is_top_performer?'#FECC64':'#F5EDE6', color:k.is_top_performer?'#3D2B1F':'var(--text-mid)' }}>
+                    {k.is_top_performer?'⭐ Top':'☆ Top'}
+                  </button>
+                </div>
               </div>
-              <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 800, color: '#5BCC8A' }}>{t.rating}</div>
+              <button onClick={()=>del(k.kpi_id)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:16, color:'#ccc', flexShrink:0 }}>🗑</button>
             </div>
-          ))}
-        </div>
+          );
+        })}
+       </div>}
+    </div>
+  );
+}
 
-        <div className="card">
-          <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 16, fontWeight: 700, marginBottom: 16 }}>⚡ Action Items</div>
-          {[
-            "Mohammed's satisfaction below target (88%)",
-            'Schedule performance review for Q2',
-            'Recognize Noor Al-Shammari excellence',
-            'Plan professional development for all'
-          ].map((item, i) => (
-            <div key={i} style={{ display: 'flex', gap: 10, padding: '10px 0', borderBottom: i < 3 ? '1px solid #F5EDE6' : 'none', alignItems: 'flex-start' }}>
-              <div style={{ fontSize: 14, marginTop: 2 }}>→</div>
-              <div style={{ fontSize: 12, color: 'var(--text-mid)', flex: 1 }}>{item}</div>
+// ─────────────────────────────────────────────
+// REGISTER PAGE
+// ─────────────────────────────────────────────
+export function AdminRegisterPage() {
+  const { token } = useAuth();
+  const [tab, setTab]   = useState('teacher');
+  const [msg, setMsg]   = useState('');
+  const [loading, setLoading] = useState(false);
+  const [teacherForm, setTF] = useState({ teacher_id:'', teacher_name:'', class:'', password:'' });
+  const [studentForm, setSF] = useState({ username:'', first_name:'', last_name:'', phone_number:'', date_of_birth:'', address:'', grade:1, medical_condition:'None', password:'' });
+
+  const registerTeacher = async () => {
+    if (!teacherForm.teacher_id||!teacherForm.teacher_name||!teacherForm.password) { setMsg('All fields required.'); return; }
+    setLoading(true); setMsg('');
+    const res = await adminPost('/admin/register/teacher', teacherForm, token);
+    setMsg(res.success ? `✅ ${res.message}` : res.error||'Failed.');
+    if (res.success) setTF({ teacher_id:'', teacher_name:'', class:'', password:'' });
+    setLoading(false);
+  };
+
+  const registerStudent = async () => {
+    if (!studentForm.username||!studentForm.first_name||!studentForm.last_name||!studentForm.password) { setMsg('Required fields missing.'); return; }
+    setLoading(true); setMsg('');
+    const res = await adminPost('/admin/register/student', studentForm, token);
+    setMsg(res.success ? `✅ ${res.message}` : res.error||'Failed.');
+    if (res.success) setSF({ username:'', first_name:'', last_name:'', phone_number:'', date_of_birth:'', address:'', grade:1, medical_condition:'None', password:'' });
+    setLoading(false);
+  };
+
+  const inp = { width:'100%', padding:'10px 14px', borderRadius:10, border:'2px solid #eee', fontFamily:"'Nunito',sans-serif", fontSize:14, outline:'none', boxSizing:'border-box', marginBottom:12 };
+  const lbl = { display:'block', fontSize:12, fontWeight:700, color:'var(--text-mid)', marginBottom:4 };
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+      <div><h2 style={{ fontFamily:"'Baloo 2',cursive", fontSize:24, fontWeight:800 }}>👤 Register Account</h2><p style={{ fontSize:13, color:'var(--text-mid)' }}>Create teacher or student accounts</p></div>
+
+      {/* Tabs */}
+      <div style={{ display:'flex', gap:8, background:'var(--sun)', padding:4, borderRadius:14, width:'fit-content' }}>
+        {[['teacher','👩‍🏫 Teacher'],['student','🧒 Student']].map(([k,l]) => (
+          <button key={k} onClick={()=>{ setTab(k); setMsg(''); }} style={{ padding:'8px 24px', borderRadius:10, border:'none', cursor:'pointer', fontFamily:"'Nunito',sans-serif", fontWeight:700, fontSize:13, background:tab===k?'white':'transparent', color:tab===k?'var(--orange)':'var(--text-mid)', boxShadow:tab===k?'0 2px 8px rgba(0,0,0,0.07)':'none' }}>{l}</button>
+        ))}
+      </div>
+
+      {msg && <div style={{ padding:'12px 16px', borderRadius:12, background:msg.startsWith('✅')?'#E8FBF0':'#FFF0E8', color:msg.startsWith('✅')?'#34A853':'#FA9058', fontSize:13, fontWeight:600 }}>{msg}</div>}
+
+      <div style={{ background:'white', borderRadius:16, padding:24, maxWidth:600 }}>
+        {tab==='teacher' ? (
+          <div>
+            <div style={{ fontFamily:"'Baloo 2',cursive", fontSize:17, fontWeight:700, marginBottom:16 }}>👩‍🏫 New Teacher Account</div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+              <div><label style={lbl}>Teacher ID *</label><input style={inp} value={teacherForm.teacher_id} onChange={e=>setTF(f=>({...f,teacher_id:e.target.value}))} placeholder="e.g. KG011" /></div>
+              <div><label style={lbl}>Full Name *</label><input style={inp} value={teacherForm.teacher_name} onChange={e=>setTF(f=>({...f,teacher_name:e.target.value}))} placeholder="e.g. Ms. Sara Ahmed" /></div>
+              <div><label style={lbl}>Class</label><input style={inp} value={teacherForm.class} onChange={e=>setTF(f=>({...f,class:e.target.value}))} placeholder="e.g. KG1 Arabic" /></div>
+              <div><label style={lbl}>Password *</label><input style={inp} type="password" value={teacherForm.password} onChange={e=>setTF(f=>({...f,password:e.target.value}))} placeholder="Set a password" /></div>
             </div>
-          ))}
-        </div>
+            <button onClick={registerTeacher} disabled={loading} style={{ padding:'12px 28px', borderRadius:12, border:'none', background:'var(--orange)', color:'white', fontFamily:"'Nunito',sans-serif", fontWeight:700, fontSize:15, cursor:'pointer' }}>{loading?'Creating…':'Create Teacher Account ✅'}</button>
+          </div>
+        ) : (
+          <div>
+            <div style={{ fontFamily:"'Baloo 2',cursive", fontSize:17, fontWeight:700, marginBottom:16 }}>🧒 New Student Account</div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+              <div><label style={lbl}>Username *</label><input style={inp} value={studentForm.username} onChange={e=>setSF(f=>({...f,username:e.target.value}))} placeholder="e.g. sara_ali_k1_11" /></div>
+              <div><label style={lbl}>Grade *</label>
+                <select style={{ ...inp, marginBottom:0 }} value={studentForm.grade} onChange={e=>setSF(f=>({...f,grade:parseInt(e.target.value)}))}>
+                  <option value={1}>Grade 1 (KG1)</option><option value={2}>Grade 2 (KG2)</option><option value={3}>Grade 3 (KG3)</option>
+                </select>
+              </div>
+              <div><label style={lbl}>First Name *</label><input style={inp} value={studentForm.first_name} onChange={e=>setSF(f=>({...f,first_name:e.target.value}))} placeholder="First name" /></div>
+              <div><label style={lbl}>Last Name *</label><input style={inp} value={studentForm.last_name} onChange={e=>setSF(f=>({...f,last_name:e.target.value}))} placeholder="Last name" /></div>
+              <div><label style={lbl}>Phone Number</label><input style={inp} value={studentForm.phone_number} onChange={e=>setSF(f=>({...f,phone_number:e.target.value}))} placeholder="05xxxxxxxx" /></div>
+              <div><label style={lbl}>Date of Birth</label><input style={{ ...inp }} type="date" value={studentForm.date_of_birth} onChange={e=>setSF(f=>({...f,date_of_birth:e.target.value}))} /></div>
+              <div style={{ gridColumn:'1/-1' }}><label style={lbl}>Address</label><input style={inp} value={studentForm.address} onChange={e=>setSF(f=>({...f,address:e.target.value}))} placeholder="Address" /></div>
+              <div><label style={lbl}>Medical Condition</label><input style={inp} value={studentForm.medical_condition} onChange={e=>setSF(f=>({...f,medical_condition:e.target.value}))} placeholder="None" /></div>
+              <div><label style={lbl}>Password *</label><input style={inp} type="password" value={studentForm.password} onChange={e=>setSF(f=>({...f,password:e.target.value}))} placeholder="Set a password" /></div>
+            </div>
+            <button onClick={registerStudent} disabled={loading} style={{ padding:'12px 28px', borderRadius:12, border:'none', background:'var(--orange)', color:'white', fontFamily:"'Nunito',sans-serif", fontWeight:700, fontSize:15, cursor:'pointer' }}>{loading?'Creating…':'Create Student Account ✅'}</button>
+          </div>
+        )}
       </div>
     </div>
   );

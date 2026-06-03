@@ -11,7 +11,7 @@ export default function Home() {
         </div>
         <div className="home-nav-btns">
           <button className="btn-outline" onClick={() => navigate("/login")}>Login</button>
-          <button className="btn-solid"   onClick={() => navigate("/signup")}>Sign Up</button>
+          
         </div>
       </nav>
 
@@ -23,7 +23,7 @@ export default function Home() {
           <p className="hero-sub">Kiddo connects teachers and parents through a secure, easy-to-use platform — keeping everyone informed and engaged in every child's journey.</p>
           <div className="hero-btns">
             <button className="hero-btn-primary" onClick={() => navigate("/login")}>Get Started 🚀</button>
-            <button className="hero-btn-secondary" onClick={() => navigate("/signup")}>Create Account</button>
+            
           </div>
         </div>
       </section>

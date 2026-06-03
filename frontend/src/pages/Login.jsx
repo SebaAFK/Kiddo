@@ -68,9 +68,8 @@ export default function Login() {
           {loading ? "Signing in..." : "Login 🚀"}
         </button>
 
-        <p style={{ marginTop:20, fontSize:14, color:"var(--text-mid)" }}>
-          Don't have an account?{" "}
-          <span onClick={() => navigate("/signup")} style={{ color:"var(--orange)", fontWeight:700, cursor:"pointer" }}>Sign Up</span>
+        <p style={{ marginTop:20, fontSize:13, color:"var(--text-light)", textAlign:"center" }}>
+          Contact your school admin to create an account.
         </p>
       </div>
     </div>
