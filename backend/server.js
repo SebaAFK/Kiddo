@@ -4,9 +4,13 @@ require("dotenv").config();
 
 const app = express();
 
+// ── CORS — allow all origins for now ──
 app.use(cors({ origin: "*" }));
+
+// ── Body parser ──
 app.use(express.json({ limit: "10kb" }));
 
+// ── Routes ──
 app.use("/api/auth",          require("./routes/auth"));
 app.use("/api/student",       require("./routes/student"));
 app.use("/api/teacher",       require("./routes/teacher"));
@@ -21,8 +25,10 @@ app.use("/api/messages",      require("./routes/messages"));
 app.use("/api/groupchat",     require("./routes/groupchat"));
 app.use("/api/teacherchat",   require("./routes/teacherchat"));
 
+// ── Health check ──
 app.get("/", (req, res) => res.json({ message: "🎒 Kiddo API is running!" }));
 
+// ── Global error handler ──
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({ error: "Something went wrong." });

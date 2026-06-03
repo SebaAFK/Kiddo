@@ -12,6 +12,9 @@ const STUDENT_NAV = [
   { section:"School Life" },
   { id:"attendance",    label:"Attendance",     icon:"✅" },
   { id:"groupchat",     label:"Parents Group",   icon:"👨‍👩‍👧" },
+  { section:"Admin" },
+  { id:"adminmessages",  label:"Admin Messages",  icon:"💬" },
+  { id:"mykpi",          label:"My Performance",  icon:"🏆" },
   { id:"profile",       label:"My Profile",     icon:"👤" },
 ];
 
@@ -27,6 +30,9 @@ const TEACHER_NAV = [
   { section:"Communication" },
   { id:"parents",       label:"Parents",        icon:"👨‍👩‍👧" },
   { id:"groupchat",     label:"Parents Group",   icon:"👨‍👩‍👧" },
+  { section:"Admin" },
+  { id:"adminmessages",  label:"Admin Messages",  icon:"💬" },
+  { id:"mykpi",          label:"My Performance",  icon:"🏆" },
   { id:"profile",       label:"My Profile",     icon:"👤" },
 ];
 

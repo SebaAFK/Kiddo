@@ -538,3 +538,188 @@ export function ProfilePage({ teacher }) {
     </div>
   );
 }
+
+// ─────────────────────────────────────────────
+// ADMIN MESSAGES PAGE — teacher sees & replies to admin
+// ─────────────────────────────────────────────
+export function AdminMessagesPage() {
+  const { token, user } = useAuth();
+  const [messages, setMessages] = useState([]);
+  const [input, setInput]       = useState('');
+  const [sending, setSending]   = useState(false);
+  const bottomRef = useRef(null);
+
+  const API = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+
+  const load = () => {
+    fetch(`${API}/teacherchat`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setMessages(data); })
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    load();
+    const interval = setInterval(load, 5000);
+    return () => clearInterval(interval);
+  }, [token]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const send = async () => {
+    if (!input.trim()) return;
+    setSending(true);
+    try {
+      const res = await fetch(`${API}/teacherchat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ content: input.trim() }),
+      });
+      const data = await res.json();
+      if (data.success) { setInput(''); load(); }
+    } catch {}
+    setSending(false);
+  };
+
+  return (
+    <div className="page-enter" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div>
+        <h2 style={{ fontFamily: "'Baloo 2', cursive", fontSize: 24, fontWeight: 800 }}>💬 Admin Messages</h2>
+        <p style={{ fontSize: 13, color: 'var(--text-mid)', marginTop: 2 }}>Private chat with the school admin</p>
+      </div>
+
+      <div className="card" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 280px)', minHeight: 400 }}>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingBottom: 14, borderBottom: '1px solid #F5EDE6', marginBottom: 14 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 12, background: 'linear-gradient(135deg,#3D2B1F,#7A5C4A)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>👑</div>
+          <div>
+            <div style={{ fontFamily: "'Baloo 2',cursive", fontSize: 16, fontWeight: 700 }}>School Admin</div>
+            <div style={{ fontSize: 12, color: 'var(--text-light)' }}>Messages auto-refresh every 5 seconds</div>
+          </div>
+        </div>
+
+        {/* Messages */}
+        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, paddingBottom: 8 }}>
+          {messages.length === 0 ? (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-light)', gap: 12, padding: 40 }}>
+              <div style={{ fontSize: 48, opacity: 0.35 }}>💬</div>
+              <div style={{ fontFamily: "'Baloo 2',cursive", fontSize: 16, fontWeight: 700, color: 'var(--text-mid)' }}>No messages yet</div>
+              <div style={{ fontSize: 13 }}>When the admin sends you a message it will appear here</div>
+            </div>
+          ) : messages.map(m => {
+            const isMe = m.sender_type === 'teacher';
+            return (
+              <div key={m.chat_id} style={{ display: 'flex', flexDirection: 'column', alignItems: isMe ? 'flex-end' : 'flex-start', marginBottom: 6 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-light)', marginBottom: 3, padding: '0 4px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {!isMe && <span style={{ background: '#FFF0E8', color: 'var(--orange)', fontSize: 10, fontWeight: 800, padding: '2px 6px', borderRadius: 10 }}>Admin</span>}
+                  {m.sender_name}
+                </div>
+                <div style={{
+                  background: isMe ? 'linear-gradient(135deg,var(--orange),#f97040)' : 'var(--apricot)',
+                  color: isMe ? 'white' : 'var(--text-dark)',
+                  padding: '10px 14px',
+                  borderRadius: isMe ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+                  fontSize: 13, maxWidth: '75%', lineHeight: 1.5
+                }}>{m.content}</div>
+                <div style={{ fontSize: 10, color: 'var(--text-light)', marginTop: 3, padding: '0 4px' }}>
+                  {new Date(m.sent_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </div>
+              </div>
+            );
+          })}
+          <div ref={bottomRef} />
+        </div>
+
+        {/* Input */}
+        <div style={{ display: 'flex', gap: 10, paddingTop: 12, borderTop: '1px solid #F5EDE6' }}>
+          <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()}
+            placeholder="Reply to admin…"
+            style={{ flex: 1, padding: '10px 16px', borderRadius: 30, border: '2px solid #F5EDE6', fontFamily: "'Nunito',sans-serif", fontSize: 13, outline: 'none' }} />
+          <button onClick={send} disabled={sending} style={{
+            width: 42, height: 42, borderRadius: '50%',
+            background: sending ? '#ccc' : 'linear-gradient(135deg,var(--orange),#f97040)',
+            border: 'none', color: 'white', fontSize: 18, cursor: sending ? 'not-allowed' : 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+          }}>➤</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// MY KPI PAGE — teacher sees their action items and top performer status
+// ─────────────────────────────────────────────
+export function MyKPIPage() {
+  const { token, user } = useAuth();
+  const [kpis, setKpis]     = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const API = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+
+  useEffect(() => {
+    fetch(`${API}/teacher/kpi`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setKpis(data); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [token]);
+
+  const topPerformer = kpis.some(k => k.is_top_performer);
+  const STATUS_STYLE = {
+    pending:    { bg: '#FFF0E8', c: '#FA9058', label: 'Pending' },
+    inprogress: { bg: '#E8F4FF', c: '#4285F4', label: 'In Progress' },
+    completed:  { bg: '#E8FBF0', c: '#5BCC8A', label: 'Completed' },
+  };
+
+  return (
+    <div className="page-enter" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div>
+        <h2 style={{ fontFamily: "'Baloo 2', cursive", fontSize: 24, fontWeight: 800 }}>🏆 My Performance</h2>
+        <p style={{ fontSize: 13, color: 'var(--text-mid)', marginTop: 2 }}>Action items and performance review from admin</p>
+      </div>
+
+      {/* Top performer banner */}
+      {topPerformer && (
+        <div style={{ background: 'linear-gradient(135deg,#FECC64,#FA9058)', borderRadius: 16, padding: 20, display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div style={{ fontSize: 48 }}>⭐</div>
+          <div>
+            <div style={{ fontFamily: "'Baloo 2',cursive", fontSize: 20, fontWeight: 800, color: 'white' }}>You're a Top Performer!</div>
+            <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.85)', marginTop: 4 }}>The admin has recognized your outstanding work. Keep it up!</div>
+          </div>
+        </div>
+      )}
+
+      {/* KPI list */}
+      <div className="card">
+        <div style={{ fontFamily: "'Baloo 2',cursive", fontSize: 17, fontWeight: 700, marginBottom: 16 }}>📋 Action Items</div>
+        {loading ? <p style={{ color: 'var(--text-light)', fontSize: 13 }}>Loading…</p> :
+         kpis.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-light)' }}>
+            <div style={{ fontSize: 40, opacity: 0.35, marginBottom: 12 }}>📋</div>
+            <div style={{ fontFamily: "'Baloo 2',cursive", fontSize: 16, fontWeight: 700, color: 'var(--text-mid)' }}>No action items yet</div>
+            <div style={{ fontSize: 13, marginTop: 4 }}>The admin will assign action items here</div>
+          </div>
+         ) : kpis.map(k => {
+          const ss = STATUS_STYLE[k.status] || STATUS_STYLE.pending;
+          return (
+            <div key={k.kpi_id} style={{ display: 'flex', gap: 14, padding: '14px 0', borderBottom: '1px solid #F5EDE6', alignItems: 'start' }}>
+              {k.is_top_performer && <span style={{ fontSize: 20, flexShrink: 0 }}>⭐</span>}
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>{k.title}</div>
+                {k.description && <div style={{ fontSize: 13, color: 'var(--text-mid)', marginTop: 4, lineHeight: 1.5 }}>{k.description}</div>}
+                <div style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 6 }}>
+                  📅 {new Date(k.created_at).toLocaleDateString()}
+                </div>
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 800, padding: '4px 12px', borderRadius: 20, background: ss.bg, color: ss.c, flexShrink: 0 }}>
+                {ss.label}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

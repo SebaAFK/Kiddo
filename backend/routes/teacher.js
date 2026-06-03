@@ -120,3 +120,15 @@ router.get("/announcements", auth, async (req, res) => {
 });
 
 module.exports = router;
+
+// GET /api/teacher/kpi — teacher sees their own KPI items
+router.get("/kpi", auth, async (req, res) => {
+  const teacher_id = req.user.teacher_id;
+  try {
+    const [rows] = await db.query(
+      "SELECT * FROM teacher_kpi WHERE teacher_id = ? ORDER BY created_at DESC",
+      [teacher_id]
+    );
+    res.json(rows);
+  } catch (err) { console.error(err); res.status(500).json({ error: "Server error." }); }
+});
