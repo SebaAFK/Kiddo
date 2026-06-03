@@ -15,9 +15,6 @@ const STUDENT_NAV = [
   { section:"Admin" },
   { id:"adminmessages",  label:"Admin Messages",  icon:"💬" },
   { id:"mykpi",          label:"My Performance",  icon:"🏆" },
-  { section:"Admin" },
-  { id:"adminmessages",  label:"Admin Messages",  icon:"💬" },
-  { id:"mykpi",          label:"My Performance",  icon:"🏆" },
   { id:"profile",       label:"My Profile",     icon:"👤" },
 ];
 
