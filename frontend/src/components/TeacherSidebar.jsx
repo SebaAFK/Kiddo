@@ -22,6 +22,13 @@ const NAV_SECTIONS = [
     ],
   },
   {
+    label: 'Admin',
+    items: [
+      { id: 'adminmessages', label: 'Admin Messages', icon: '💬' },
+      { id: 'mykpi',         label: 'My Performance', icon: '🏆' },
+    ],
+  },
+  {
     label: 'Account',
     items: [
       { id: 'profile', label: 'My Profile', icon: '👤' },
